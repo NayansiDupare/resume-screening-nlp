@@ -1,0 +1,23 @@
+export const SKILL_LIST = [
+  "react",
+  "node.js",
+  "node",
+  "mongodb",
+  "express",
+  "javascript",
+  "typescript",
+  "java",
+  "spring",
+  "python",
+  "django",
+  "flask",
+  "aws",
+  "docker",
+  "kubernetes",
+  "mysql",
+  "postgresql",
+  "html",
+  "css",
+  "tailwind",
+  "firebase"
+];
