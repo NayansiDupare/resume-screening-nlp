@@ -1,28 +1,21 @@
-import axios from "axios";
-
-const API = axios.create({
-  baseURL: "http://localhost:5000/api",
-});
-
-// Attach token automatically
-API.interceptors.request.use((config) => {
-  const token = localStorage.getItem("token");
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
+import axiosInstance from "./axiosInstance";
 
 // Create Job
 export const createJob = (data) => {
-  return API.post("/job/create", data);
+  return axiosInstance.post("/job/create", data);
 };
 
 // Get All Jobs
 export const getAllJobs = () => {
-  return API.get("/job/all");
+  return axiosInstance.get("/job/all");
 };
 
+// Get Single Job (View page)
+export const getJobById = (jobId) => {
+  return axiosInstance.get(`/job/${jobId}`);
+};
+
+// AI Summarize
 export const summarizeJD = (description) => {
-  return API.post("/ai/summarize", { description });
+  return axiosInstance.post("/ai/summarize", { description });
 };

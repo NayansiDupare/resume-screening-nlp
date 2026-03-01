@@ -1,10 +1,9 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
-import { createJob } from "../api/jobApi";
+import { createJob, summarizeJD } from "../api/jobApi";
 import mammoth from "mammoth";
 import * as pdfjsLib from "pdfjs-dist";
-import axios from "axios";
 
 // Configure PDF worker
 pdfjsLib.GlobalWorkerOptions.workerSrc =
@@ -28,25 +27,24 @@ export default function CreateJob() {
   });
 
   const [loading, setLoading] = useState(false);
-  const [dragActive, setDragActive] = useState(false);
   const [summarizing, setSummarizing] = useState(false);
   const navigate = useNavigate();
 
   const handleChange = (e) =>
     setForm({ ...form, [e.target.name]: e.target.value });
 
-  //  Extract Skills Automatically
+  // Extract Skills Automatically
   const extractSkills = (text) => {
     const lowerText = text.toLowerCase();
 
-    const foundSkills = SKILL_LIST.filter(skill =>
+    const foundSkills = SKILL_LIST.filter((skill) =>
       lowerText.includes(skill.toLowerCase())
     );
 
     return foundSkills;
   };
 
-  //  File Handler (TXT + DOCX + PDF)
+  // File Handler (TXT + DOCX + PDF)
   const handleFile = async (file) => {
     if (!file) return;
 
@@ -75,7 +73,7 @@ export default function CreateJob() {
         for (let i = 1; i <= pdf.numPages; i++) {
           const page = await pdf.getPage(i);
           const content = await page.getTextContent();
-          extractedText += content.items.map(item => item.str).join(" ");
+          extractedText += content.items.map((item) => item.str).join(" ");
         }
       }
 
@@ -86,10 +84,10 @@ export default function CreateJob() {
 
       const skills = extractSkills(extractedText);
 
-      setForm(prev => ({
+      setForm((prev) => ({
         ...prev,
         description: extractedText,
-        requirements: skills.join(", ")
+        requirements: skills.join(", "),
       }));
 
       toast.success("Job description loaded & skills extracted");
@@ -99,7 +97,7 @@ export default function CreateJob() {
     }
   };
 
-  //  AI Summarization
+  // AI Summarization (Using API Layer)
   const handleSummarize = async () => {
     if (!form.description) {
       toast.error("Add job description first");
@@ -109,19 +107,11 @@ export default function CreateJob() {
     setSummarizing(true);
 
     try {
-      const token = localStorage.getItem("token");
+      const res = await summarizeJD(form.description);
 
-      const res = await axios.post(
-        "http://localhost:5000/api/ai/summarize",
-        { description: form.description },
-        {
-          headers: { Authorization: `Bearer ${token}` }
-        }
-      );
-
-      setForm(prev => ({
+      setForm((prev) => ({
         ...prev,
-        description: res.data.summary
+        description: res.data.summary,
       }));
 
       toast.success("AI summary generated");
@@ -143,7 +133,7 @@ export default function CreateJob() {
         description: form.description,
         requirements: form.requirements
           .split(",")
-          .map(r => r.trim())
+          .map((r) => r.trim())
           .filter(Boolean),
       });
 
@@ -157,90 +147,88 @@ export default function CreateJob() {
     }
   };
 
- return (
-  <div className="min-h-screen bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center p-6">
-    <div className="bg-white w-full max-w-3xl p-10 rounded-2xl shadow-xl">
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center p-6">
+      <div className="bg-white w-full max-w-3xl p-10 rounded-2xl shadow-xl">
 
-      <h2 className="text-3xl font-bold text-slate-800 mb-10">
-        Create New Job
-      </h2>
+        <h2 className="text-3xl font-bold text-slate-800 mb-10">
+          Create New Job
+        </h2>
 
-      <form onSubmit={handleSubmit} className="space-y-10">
+        <form onSubmit={handleSubmit} className="space-y-10">
 
-        {/* ================= TITLE ================= */}
-        <div>
-          <label className="block text-sm font-medium text-slate-600 mb-2">
-            Job Title
-          </label>
-          <input
-            name="title"
-            placeholder="e.g. Senior Backend Developer"
-            onChange={handleChange}
-            required
-            className="w-full border border-slate-300 rounded-xl p-4 focus:ring-2 focus:ring-indigo-600 outline-none transition"
-          />
-        </div>
-
-        {/* ================= DESCRIPTION ================= */}
-        <div>
-          <label className="block text-sm font-medium text-slate-600 mb-4">
-            Job Description
-          </label>
-
-          {/* Smaller Drag Area */}
-          
-          <textarea
-            name="description"
-            placeholder="Write or upload job description..."
-            rows="7"
-            value={form.description}
-            onChange={handleChange}
-            required
-            className="w-full border border-slate-300 rounded-xl p-4 focus:ring-2 focus:ring-indigo-600 outline-none transition"
-          />
+          {/* Title */}
+          <div>
+            <label className="block text-sm font-medium text-slate-600 mb-2">
+              Job Title
+            </label>
+            <input
+              name="title"
+              placeholder="e.g. Senior Backend Developer"
+              onChange={handleChange}
+              required
+              className="w-full border border-slate-300 rounded-xl p-4 focus:ring-2 focus:ring-indigo-600 outline-none transition"
+            />
           </div>
 
-                  {/* ================= REQUIREMENTS ================= */}
-        <div>
-          <label className="block text-sm font-medium text-slate-600 mb-2">
-            Requirements
-          </label>
+          {/* Description */}
+          <div>
+            <label className="block text-sm font-medium text-slate-600 mb-4">
+              Job Description
+            </label>
 
-          <input
-            name="requirements"
-            placeholder="React, Node.js, MongoDB..."
-            value={form.requirements}
-            onChange={handleChange}
-            className="w-full border border-slate-300 rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-600 outline-none transition"
-          />
+            <textarea
+              name="description"
+              placeholder="Write or upload job description..."
+              rows="7"
+              value={form.description}
+              onChange={handleChange}
+              required
+              className="w-full border border-slate-300 rounded-xl p-4 focus:ring-2 focus:ring-indigo-600 outline-none transition"
+            />
+          </div>
 
-          <p className="text-xs text-slate-400 mt-1">
-            Separate skills with commas.
-          </p>
-        </div>
+          {/* Requirements */}
+          <div>
+            <label className="block text-sm font-medium text-slate-600 mb-2">
+              Requirements
+            </label>
 
-        {/* ================= ACTION BUTTONS ================= */}
-        <div className="pt-6 border-t border-slate-200 flex justify-between items-center">
+            <input
+              name="requirements"
+              placeholder="React, Node.js, MongoDB..."
+              value={form.requirements}
+              onChange={handleChange}
+              className="w-full border border-slate-300 rounded-xl p-3 text-sm focus:ring-2 focus:ring-indigo-600 outline-none transition"
+            />
 
-          <button
-            type="button"
-            onClick={handleSummarize}
-            className="bg-slate-800 hover:bg-slate-900 text-white px-6 py-2 rounded-lg text-sm transition"
-          >
-            {summarizing ? "Summarizing..." : "AI Summarize JD"}
-          </button>
+            <p className="text-xs text-slate-400 mt-1">
+              Separate skills with commas.
+            </p>
+          </div>
 
-          <button
-            disabled={loading}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-2 rounded-lg font-medium transition shadow-sm"
-          >
-            {loading ? "Creating..." : "Create Job"}
-          </button>
+          {/* Action Buttons */}
+          <div className="pt-6 border-t border-slate-200 flex justify-between items-center">
 
-        </div>
+            <button
+              type="button"
+              onClick={handleSummarize}
+              className="bg-slate-800 hover:bg-slate-900 text-white px-6 py-2 rounded-lg text-sm transition"
+            >
+              {summarizing ? "Summarizing..." : "AI Summarize JD"}
+            </button>
 
-      </form>
+            <button
+              disabled={loading}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-2 rounded-lg font-medium transition shadow-sm"
+            >
+              {loading ? "Creating..." : "Create Job"}
+            </button>
+
+          </div>
+
+        </form>
+      </div>
     </div>
-  </div>
-);
+  );
 }
