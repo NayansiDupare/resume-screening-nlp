@@ -1,6 +1,7 @@
 import { useParams } from "react-router-dom";
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
+import { useNavigate } from "react-router-dom";
 
 import { getJobById } from "../api/jobApi";
 import { uploadResumes, deleteResume } from "../api/resumeApi";
@@ -8,6 +9,7 @@ import { generateRanking, getRanking } from "../api/rankingApi";
 
 export default function JobDetails() {
   const { jobId } = useParams();
+  const navigate = useNavigate();
 
   const [job, setJob] = useState(null);
   const [files, setFiles] = useState([]);
@@ -165,11 +167,15 @@ export default function JobDetails() {
 
                     <td className="p-4">
                       <button
-                        onClick={() => setSelectedCandidate(candidate)}
-                        className="text-indigo-600 hover:underline"
-                      >
-                        View Details
-                      </button>
+                    onClick={() =>
+                      navigate(`/explain/${jobId}/${candidate._id}`, {
+                        state: { candidate }
+                      })
+                    }
+                    className="text-indigo-600 hover:underline"
+                  >
+                    Explainable AI
+                  </button>
                     </td>
 
                     <td className="p-4">

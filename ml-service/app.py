@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from dotenv import load_dotenv
+import os
 
 from services.similarity import get_similarity_scores
 from services.explainable_ranker import explain_candidate
@@ -11,13 +12,128 @@ from services.skill_extractor import extract_skills_from_jd
 from services.resume_quality import analyze_resume_quality
 from services.experience_engine import evaluate_experience
 
-
-
-
 load_dotenv()
 
 app = Flask(__name__)
 CORS(app)
+
+# --------------------------------------------------
+# STRICT ENTERPRISE ATS ENGINE
+# --------------------------------------------------
+def generate_strict_ats(explanation_data):
+
+    coverage = explanation_data.get("jd_coverage", 0)
+    missing = explanation_data.get("missing_keywords", [])
+    critical_missing = explanation_data.get("critical_missing_count", 0)
+
+    experience_data = explanation_data.get("experience", {})
+    experience_status = experience_data.get("status")
+    experience_gap = experience_data.get("gap")
+
+    reject_reasons = []
+    strengths = []
+    weaknesses = []
+    improvements = []
+
+    auto_reject = False
+
+    # --------------------------------------------------
+    # STRICT RULE 1 — Missing critical skills
+    # --------------------------------------------------
+    if critical_missing >= 1:
+        auto_reject = True
+        reject_reasons.append(
+            "Critical mandatory skills required for this role are missing."
+        )
+
+    # --------------------------------------------------
+    # STRICT RULE 2 — Minimum coverage threshold
+    # --------------------------------------------------
+    if coverage < 70:
+        auto_reject = True
+        reject_reasons.append(
+            "JD skill coverage below strict ATS threshold (70%)."
+        )
+
+    # --------------------------------------------------
+    # STRICT RULE 3 — Enterprise alignment requirement
+    # --------------------------------------------------
+    if coverage < 85:
+        auto_reject = True
+        reject_reasons.append(
+            "Overall technical alignment below enterprise screening threshold (85%)."
+        )
+
+    # --------------------------------------------------
+    # STRICT RULE 4 — Experience under qualification
+    # --------------------------------------------------
+    if experience_status in ["UNDER_QUALIFIED", "SLIGHT_UNDER"]:
+        auto_reject = True
+        reject_reasons.append(
+            f"Experience gap of {experience_gap} years below job requirement."
+        )
+
+    verdict = "Rejected" if auto_reject else "Shortlisted"
+
+    # --------------------------------------------------
+    # Strength Analysis
+    # --------------------------------------------------
+    if explanation_data.get("matched_keywords"):
+        strengths.append(
+            f"Strong alignment with core technologies: {', '.join(explanation_data['matched_keywords'])}."
+        )
+
+    if coverage >= 90:
+        strengths.append(
+            "Exceptional keyword coverage and strong technical consistency."
+        )
+
+    # --------------------------------------------------
+    # Weakness Analysis
+    # --------------------------------------------------
+    if missing:
+        weaknesses.append(
+            f"Missing required competencies in: {', '.join(missing)}."
+        )
+        improvements.append(
+            "Add demonstrable experience or projects covering missing technical skills."
+        )
+
+    if experience_status in ["UNDER_QUALIFIED", "SLIGHT_UNDER"]:
+        weaknesses.append(
+            "Professional experience does not fully meet job expectations."
+        )
+        improvements.append(
+            "Gain additional hands-on industry experience aligned with job requirements."
+        )
+
+    # --------------------------------------------------
+    # Narrative Generation
+    # --------------------------------------------------
+    narrative = f"""
+ENTERPRISE STRICT ATS EVALUATION REPORT
+
+Final JD Coverage Score: {coverage}%
+Decision: {verdict}
+
+Strength Indicators:
+{' '.join(strengths) if strengths else 'Limited strengths identified under strict evaluation criteria.'}
+
+Critical Weaknesses:
+{' '.join(weaknesses) if weaknesses else 'No major structural weaknesses detected.'}
+
+Rejection Triggers:
+{' '.join(reject_reasons) if reject_reasons else 'No strict rejection rules triggered.'}
+
+Improvement Suggestions:
+{' '.join(improvements) if improvements else 'Profile satisfies strict enterprise ATS standards.'}
+"""
+
+    return {
+        "verdict": verdict,
+        "reject_reasons": reject_reasons,
+        "narrative": narrative.strip()
+    }
 
 # --------------------------------------------------
 # Health check
@@ -25,7 +141,6 @@ CORS(app)
 @app.route("/health", methods=["GET"])
 def health():
     return jsonify({"status": "ML service running"})
-
 
 # --------------------------------------------------
 # Resume similarity
@@ -51,12 +166,12 @@ def similarity():
             "details": str(e)
         }), 500
 
-
 # --------------------------------------------------
-# Explainable AI
+# Explainable AI + STRICT ATS
 # --------------------------------------------------
 @app.route("/ml/explain", methods=["POST"])
 def explain():
+    print("🔥 EXPLAIN ROUTE CALLED 🔥")
     data = request.get_json()
 
     job_text = data.get("job_text", "")
@@ -74,6 +189,13 @@ def explain():
             job_text,
             extracted_skills
         )
+
+        # Apply strict ATS logic
+        ats_evaluation = generate_strict_ats(explanation)
+
+        explanation["ats_evaluation"] = ats_evaluation
+        explanation["decision"] = ats_evaluation["verdict"]
+
         return jsonify(explanation)
 
     except Exception as e:
@@ -81,56 +203,32 @@ def explain():
             "error": "Explainability computation failed",
             "details": str(e)
         }), 500
+    
+@app.route("/ml/conversational-explain", methods=["POST"])
+def conversational_explain():
+    data = request.get_json()
 
+    explanation = data.get("explanation")
+
+    if not explanation:
+        return jsonify({"error": "explanation data required"}), 400
+
+    try:
+        from services.conversational_ai import generate_conversational_explanation
+
+        response = generate_conversational_explanation(explanation)
+
+        return jsonify({
+            "conversational_explanation": response
+        })
+
+    except Exception as e:
+        return jsonify({
+            "error": "Conversational explanation failed",
+            "details": str(e)
+        }), 500
 
 # --------------------------------------------------
-# GitHub Analyzer
-# --------------------------------------------------
-@app.route("/ml/github", methods=["POST"])
-def github_analysis():
-    data = request.get_json()
-    github_url = data.get("github_url", "")
-
-    if not github_url:
-        return jsonify({"error": "github_url is required"}), 400
-
-    result = analyze_github_profile(github_url)
-    return jsonify(result)
-
-
-
-
-@app.route("/ml/portfolio", methods=["POST"])
-def portfolio_analysis():
-    data = request.get_json()
-    portfolio_url = data.get("portfolio_url", "")
-    job_text = data.get("job_text", "")
-
-    if not portfolio_url:
-        return jsonify({"error": "portfolio_url required"}), 400
-
-    result = analyze_portfolio(portfolio_url, job_text)
-    return jsonify(result)
-
-
-
-@app.route("/ml/linkedin", methods=["POST"])
-def linkedin_analysis():
-    data = request.get_json()
-    linkedin_url = data.get("linkedin_url", "")
-    job_text = data.get("job_text", "")
-
-    if not linkedin_url:
-        return jsonify({"error": "linkedin_url required"}), 400
-
-    result = analyze_linkedin_profile(linkedin_url, job_text)
-    return jsonify(result)
-
-
-
-
-
-
 @app.route("/ml/extract-skills", methods=["POST"])
 def extract_skills():
     data = request.get_json()
@@ -140,10 +238,9 @@ def extract_skills():
         return jsonify({"error": "job_text is required"}), 400
 
     skills = extract_skills_from_jd(jd_text)
-
     return jsonify(skills)
 
-
+# --------------------------------------------------
 @app.route("/ml/resume-quality", methods=["POST"])
 def resume_quality():
     data = request.get_json()
@@ -160,7 +257,8 @@ def resume_quality():
             "error": "Resume quality analysis failed",
             "details": str(e)
         }), 500
-    
+
+# --------------------------------------------------
 @app.route("/ml/experience", methods=["POST"])
 def experience_analysis():
     data = request.get_json()
@@ -177,5 +275,3 @@ def experience_analysis():
 # --------------------------------------------------
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5001, debug=True)
-
-

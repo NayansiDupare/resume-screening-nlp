@@ -6,10 +6,8 @@ const Ranking = require("../models/ranking.model");
 
 const ML_URL = process.env.ML_SERVICE_URL || "http://127.0.0.1:5001";
 
-const githubCache = {};
-
 /* ======================================================
-   GENERATE RANKING
+   GENERATE RANKING (STRICT ATS + CONVERSATIONAL AI)
 ====================================================== */
 const generateRanking = async (req, res) => {
   try {
@@ -45,198 +43,92 @@ const generateRanking = async (req, res) => {
       });
     }
 
+    /* ---------- Extract Skills ---------- */
+    const skillsResponse = await axios.post(
+      `${ML_URL}/ml/extract-skills`,
+      { job_text: job.description }
+    );
+
+    const extractedSkills = skillsResponse.data;
+
     const results = [];
 
     /* ======================================================
        LOOP THROUGH RESUMES
     ====================================================== */
-    const skillsResponse = await axios.post(
-        `${ML_URL}/ml/extract-skills`,
-        { job_text: job.description }
-      );
-     const extractedSkills = skillsResponse.data;
-   
-   
-   
     for (let i = 0; i < resumes.length; i++) {
       const resume = resumes[i];
       const similarityScore = scores[i] || 0;
 
-      /* ---------- Explain ---------- */
+      /* ---------- Explain + STRICT ATS ---------- */
       const explainResponse = await axios.post(
-          `${ML_URL}/ml/explain`,
-          {
-            job_text: job.description,
-            resume_text: resume.text || "",
-            extracted_skills: extractedSkills
-          }
-        );
-
+        `${ML_URL}/ml/explain`,
+        {
+          job_text: job.description,
+          resume_text: resume.text || "",
+          extracted_skills: extractedSkills,
+        }
+      );
 
       const explanation = explainResponse.data;
+
+      /* ---------- Conversational AI ---------- */
+      let conversationalText = "";
+
+      try {
+        const conversationalResponse = await axios.post(
+          `${ML_URL}/ml/conversational-explain`,
+          { explanation }
+        );
+
+        conversationalText =
+          conversationalResponse.data.conversational_explanation || "";
+      } catch (err) {
+        conversationalText = "AI explanation unavailable.";
+      }
+
+      /* ---------- Strict ATS ---------- */
+      const atsEvaluation = explanation.ats_evaluation || {};
+      const strictVerdict = atsEvaluation.verdict || "Rejected";
+
+      const coverage = explanation.jd_coverage || 0;
+
+      /* ---------- Experience ---------- */
       const experienceDetails = explanation.experience || {};
       const experienceScore = experienceDetails.score || 0;
       const experiencePenalty = experienceDetails.penalty || 0;
 
+      /* ---------- Seniority ---------- */
       const seniorityDetails = explanation.seniority || {};
       const seniorityScore = seniorityDetails.score || 0;
       const seniorityPenalty = seniorityDetails.penalty || 0;
-            const coverage = explanation.jd_coverage || 0;
 
-      /* ================================
-         GITHUB
-      ================================= */
-      const githubMatch = (resume.text || "").match(
-        /(https?:\/\/)?(www\.)?github\.com\/[A-Za-z0-9_-]+/i
-      );
+      /* ---------- Resume Quality ---------- */
+      let resumeQualityScore = 0;
+      let resumeQualityDetails = {};
+      let resumeQualityPenalties = {};
 
-      let githubDetails = {};
-
-      if (githubMatch) {
-        let githubUrl = githubMatch[0];
-
-        if (!githubUrl.startsWith("http")) {
-          githubUrl = "https://" + githubUrl;
-        }
-
-        if (githubCache[githubUrl]) {
-          githubDetails = githubCache[githubUrl];
-        } else {
-          try {
-            const githubResponse = await axios.post(
-              `${ML_URL}/ml/github`,
-              { github_url: githubUrl }
-            );
-
-            githubDetails = githubResponse.data;
-            githubCache[githubUrl] = githubResponse.data;
-          } catch {
-            githubDetails = {};
-          }
-        }
-      }
-
-      const githubPositive =
-        githubDetails.github_positive_score || 0;
-
-      const githubPenalties =
-        githubDetails.penalties || {};
-
-      const totalGithubPenalty = Object.values(
-        githubPenalties
-      ).reduce((acc, val) => acc + val, 0);
-
-      /* ================================
-         PORTFOLIO
-      ================================= */
-      const portfolioMatch = (resume.text || "").match(
-        /(https?:\/\/[^\s]+)/g
-      );
-
-      let portfolioScore = 0;
-      let portfolioDetails = {};
-
-      if (portfolioMatch) {
-        const possibleUrls = portfolioMatch.filter(
-          (url) =>
-            !url.includes("github.com") &&
-            !url.includes("linkedin.com")
+      try {
+        const resumeQualityResponse = await axios.post(
+          `${ML_URL}/ml/resume-quality`,
+          { resume_text: resume.text || "" }
         );
 
-        if (possibleUrls.length > 0) {
-          try {
-            const portfolioResponse = await axios.post(
-              `${ML_URL}/ml/portfolio`,
-              {
-                portfolio_url: possibleUrls[0],
-                job_text: job.description,
-              }
-            );
+        resumeQualityScore =
+          resumeQualityResponse.data.resume_positive_score || 0;
 
-            portfolioScore =
-              portfolioResponse.data.portfolio_score || 0;
+        resumeQualityDetails = resumeQualityResponse.data;
+        resumeQualityPenalties =
+          resumeQualityResponse.data.penalties || {};
+      } catch {}
 
-            portfolioDetails =
-              portfolioResponse.data;
-          } catch {}
-        }
-      }
+      /* ======================================================
+         FINAL SCORING
+      ====================================================== */
 
-      /* ================================
-         LINKEDIN
-      ================================= */
-      const linkedinMatch = (resume.text || "").match(
-        /(https?:\/\/)?(www\.)?linkedin\.com\/in\/[A-Za-z0-9_-]+/i
-      );
-
-      let linkedinScore = 0;
-      let linkedinDetails = {};
-
-      if (linkedinMatch) {
-        let linkedinUrl = linkedinMatch[0];
-
-        if (!linkedinUrl.startsWith("http")) {
-          linkedinUrl = "https://" + linkedinUrl;
-        }
-
-        try {
-          const linkedinResponse = await axios.post(
-            `${ML_URL}/ml/linkedin`,
-            {
-              linkedin_url: linkedinUrl,
-              job_text: job.description,
-            }
-          );
-
-          linkedinScore =
-            linkedinResponse.data.linkedin_score || 0;
-
-          linkedinDetails =
-            linkedinResponse.data;
-        } catch {}
-      }
-
-
-
-      /* ---------- Resume Quality Detection ---------- */
-    let resumeQualityScore = 0;
-    let resumeQualityDetails = {};
-    let resumeQualityPenalties = {};
-
-    try {
-      const resumeQualityResponse = await axios.post(
-        `${ML_URL}/ml/resume-quality`,
-        {
-          resume_text: resume.text || "",
-        }
-      );
-
-      resumeQualityScore =
-        resumeQualityResponse.data.resume_positive_score || 0;
-
-      resumeQualityDetails = resumeQualityResponse.data;
-
-      resumeQualityPenalties =
-        resumeQualityResponse.data.penalties || {};
-    } catch (err) {
-      resumeQualityScore = 0;
-    }
-
-    
-
-/* ================================
-   SCORING
-================================ */
-
-      // ---------------------------
-      // BASE WEIGHTS
-      // ---------------------------
       const similarityWeighted = similarityScore * 50;
       const coverageWeighted = coverage * 0.5;
 
-      // ---------------------------
-      // SYSTEM PENALTIES
-      // ---------------------------
       let systemPenalties = {};
 
       if (coverage < 40) {
@@ -250,111 +142,80 @@ const generateRanking = async (req, res) => {
       const totalSystemPenalty = Object.values(systemPenalties)
         .reduce((acc, val) => acc + val, 0);
 
-      // ---------------------------
-      // RESUME QUALITY PENALTIES
-      // ---------------------------
       const totalResumePenalty = Object.values(resumeQualityPenalties)
         .reduce((acc, val) => acc + val, 0);
 
-      // ---------------------------
-      // FINAL SCORE
-      // ---------------------------
       let finalScore = Math.round(
         similarityWeighted +
-        coverageWeighted +
-        githubPositive +
-        portfolioScore +
-        linkedinScore +
-        experienceScore +
-        experiencePenalty +
-        seniorityScore +
-        seniorityPenalty +
-        resumeQualityScore +
-        totalGithubPenalty +
-        totalResumePenalty +
-        totalSystemPenalty
+          coverageWeighted +
+          experienceScore +
+          experiencePenalty +
+          seniorityScore +
+          seniorityPenalty +
+          resumeQualityScore +
+          totalResumePenalty +
+          totalSystemPenalty
       );
 
-finalScore = Math.max(0, finalScore);
+      finalScore = Math.max(0, finalScore);
 
-      let decision = "Rejected";
-
-      if (finalScore >= 85) {
-        decision = "Highly Suitable";
-      } else if (finalScore >= 70) {
-        decision = "Suitable";
-      } else if (finalScore >= 55) {
-        decision = "Needs Review";
+      /* ---------- STRICT ATS OVERRIDE ---------- */
+      if (strictVerdict === "Rejected") {
+        finalScore = Math.min(finalScore, 40);
       }
 
-      /* ================================
+      /* ======================================================
          PUSH RESULT
-      ================================= */
-            results.push({
-          resumeId: resume._id,
+      ====================================================== */
+      results.push({
+        resumeId: resume._id,
 
-          // FINAL SCORE
-          score: finalScore,
+        score: finalScore,
+        raw_similarity: similarityScore,
 
-          // CORE ML
-          raw_similarity: similarityScore,
+        status: "pending",
+        decision: strictVerdict,
 
-          experience_details: experienceDetails,
+        ats_evaluation: atsEvaluation,
 
-          // GITHUB
-          github_score: githubPositive,
-          github_details: githubDetails,
+        // 🔥 Conversational AI (ChatGPT style)
+        ai_conversation: conversationalText,
 
-          // PORTFOLIO
-          portfolio_score: portfolioScore || 0,
-          portfolio_details: portfolioDetails || {},
+        experience_details: experienceDetails,
 
-          // LINKEDIN
-          linkedin_score: linkedinScore || 0,
-          linkedin_details: linkedinDetails || {},
+        resume_quality_score: resumeQualityScore,
+        resume_quality_details: resumeQualityDetails,
 
-          // RESUME QUALITY
-          resume_quality_score: resumeQualityScore,
-          resume_quality_details: resumeQualityDetails,
-
-          // TRANSPARENT BREAKDOWN
-          score_breakdown: {
-            semantic_similarity: similarityWeighted,
-            keyword_coverage: coverageWeighted,
-            github_positive: githubPositive,
-            portfolio_score: portfolioScore || 0,
-            linkedin_score: linkedinScore || 0,
-            resume_quality_positive: resumeQualityScore,
-            experience_score: experienceScore,
-            experience_penalty: experiencePenalty,       
-            seniority_score: seniorityScore,
-            seniority_penalty: seniorityPenalty,
-
-            penalties: {
-              ...githubPenalties,
-              ...resumeQualityPenalties,
-              ...systemPenalties
-            }
+        score_breakdown: {
+          semantic_similarity: similarityWeighted,
+          keyword_coverage: coverageWeighted,
+          resume_quality_positive: resumeQualityScore,
+          experience_score: experienceScore,
+          experience_penalty: experiencePenalty,
+          seniority_score: seniorityScore,
+          seniority_penalty: seniorityPenalty,
+          penalties: {
+            ...resumeQualityPenalties,
+            ...systemPenalties,
           },
+        },
 
-          status: "pending",
-          decision,
-
-          explanation: {
-            jd_coverage: coverage,
-            matched_keywords: explanation.matched_keywords || [],
-            missing_keywords: explanation.missing_keywords || [],
-            top_matching_lines: explanation.top_matching_lines || [],
-            reason: explanation.reason || "",
-            experience: experienceDetails,
-            seniority: seniorityDetails
-          }
-        });
-
+        explanation: {
+          jd_coverage: coverage,
+          matched_keywords: explanation.matched_keywords || [],
+          missing_keywords: explanation.missing_keywords || [],
+          top_matching_lines: explanation.top_matching_lines || [],
+          reason: explanation.reason || "",
+          experience: experienceDetails,
+          seniority: seniorityDetails,
+        },
+      });
     }
 
+    /* ---------- Sort by Score ---------- */
     results.sort((a, b) => b.score - a.score);
 
+    /* ---------- Save Ranking ---------- */
     await Ranking.deleteMany({ jobId });
 
     const ranking = await Ranking.create({
@@ -400,9 +261,6 @@ const getRankingByJobId = async (req, res) => {
   }
 };
 
-
-
-
 /* ======================================================
    UPDATE STATUS
 ====================================================== */
@@ -412,8 +270,7 @@ const updateRankingStatus = async (req, res) => {
 
     if (!jobId || !resumeId || !status) {
       return res.status(400).json({
-        message:
-          "jobId, resumeId and status are required",
+        message: "jobId, resumeId and status are required",
       });
     }
 

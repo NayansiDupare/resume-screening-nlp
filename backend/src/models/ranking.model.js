@@ -26,7 +26,9 @@ const rankingSchema = new mongoose.Schema(
           default: 0,
         },
 
+        // -----------------------------
         // GitHub
+        // -----------------------------
         github_score: {
           type: Number,
           default: 0,
@@ -36,7 +38,9 @@ const rankingSchema = new mongoose.Schema(
           default: {},
         },
 
+        // -----------------------------
         // Portfolio
+        // -----------------------------
         portfolio_score: {
           type: Number,
           default: 0,
@@ -46,7 +50,9 @@ const rankingSchema = new mongoose.Schema(
           default: {},
         },
 
+        // -----------------------------
         // LinkedIn
+        // -----------------------------
         linkedin_score: {
           type: Number,
           default: 0,
@@ -56,6 +62,9 @@ const rankingSchema = new mongoose.Schema(
           default: {},
         },
 
+        // -----------------------------
+        // Status & Decision
+        // -----------------------------
         status: {
           type: String,
           default: "pending",
@@ -66,20 +75,45 @@ const rankingSchema = new mongoose.Schema(
           default: "Rejected",
         },
 
+        // 🔥 STRICT ATS BLOCK (NEW)
+        ats_evaluation: {
+          verdict: {
+            type: String,
+            default: "",
+          },
+          reject_reasons: {
+            type: [String],
+            default: [],
+          },
+          narrative: {
+            type: String,
+            default: "",
+          },
+        },
+
+        // -----------------------------
+        // Resume Quality
+        // -----------------------------
         resume_quality_score: {
-            type: Number,
-            default: 0,
-          },
-          resume_quality_details: {
-            type: mongoose.Schema.Types.Mixed,
-            default: {},
-          },
-          score_breakdown: {
-            type: mongoose.Schema.Types.Mixed,
-            default: {},
-          },
+          type: Number,
+          default: 0,
+        },
+        resume_quality_details: {
+          type: mongoose.Schema.Types.Mixed,
+          default: {},
+        },
 
+        // -----------------------------
+        // Score Breakdown
+        // -----------------------------
+        score_breakdown: {
+          type: mongoose.Schema.Types.Mixed,
+          default: {},
+        },
 
+        // -----------------------------
+        // Explanation
+        // -----------------------------
         explanation: {
           jd_coverage: {
             type: Number,
@@ -101,6 +135,19 @@ const rankingSchema = new mongoose.Schema(
             type: String,
             default: "",
           },
+        },
+
+        ai_conversation: {
+          type: String,
+          default: ""
+        },
+
+        // -----------------------------
+        // Experience Details
+        // -----------------------------
+        experience_details: {
+          type: mongoose.Schema.Types.Mixed,
+          default: {},
         },
       },
     ],
