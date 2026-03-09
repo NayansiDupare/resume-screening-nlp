@@ -4,7 +4,7 @@ from openai import OpenAI
 
 def generate_conversational_explanation(explanation):
     """
-    Generates a recruiter-style conversational explanation
+    Generates structured recruiter-style explanation
     from ATS evaluation data.
     """
 
@@ -22,28 +22,34 @@ def generate_conversational_explanation(explanation):
         missing = explanation.get("missing_keywords", [])
 
         prompt = f"""
-You are an expert technical recruiter and AI hiring analyst.
+You are a senior technical recruiter explaining ATS candidate evaluation results.
 
-Analyze the candidate evaluation below and explain it clearly
-to a hiring manager.
+Analyze the following data and produce a **clear bullet point explanation**.
 
-Evaluation Data
----------------
+Candidate Evaluation Data
+-------------------------
 JD Coverage: {coverage}
 Matched Skills: {", ".join(matched) if matched else "None"}
 Missing Skills: {", ".join(missing) if missing else "None"}
 ATS Decision: {ats_decision}
 
-Explain:
+Return the explanation ONLY as bullet points.
 
-1. Why the candidate received this evaluation
-2. Technical strengths
-3. Technical weaknesses or hiring risks
-4. Why the ATS system made the decision
-5. Whether you would recommend the candidate
-6. Suggestions for improvement
+Rules:
+- Each point must start with "-"
+- Maximum 6 bullet points
+- Do NOT write paragraphs
+- Do NOT write greetings
+- Do NOT write letters like "Dear Hiring Manager"
 
-Write in a professional recruiter-style explanation.
+Example format:
+
+- Candidate shows strong alignment with core technologies.
+- High JD coverage indicates strong skill match.
+- Missing Docker may affect deployment workflows.
+- ATS rejected due to missing mandatory requirement.
+- Candidate could still succeed with targeted training.
+- Recommended improvement: gain hands-on Docker experience.
 """
 
         response = client.chat.completions.create(
@@ -51,17 +57,19 @@ Write in a professional recruiter-style explanation.
             messages=[
                 {
                     "role": "system",
-                    "content": "You are a senior technical recruiter explaining ATS candidate evaluations."
+                    "content": "You are a senior technical recruiter explaining ATS evaluation results."
                 },
                 {
                     "role": "user",
                     "content": prompt
                 }
             ],
-            temperature=0.4
+            temperature=0.3
         )
 
-        return response.choices[0].message.content
+        explanation_text = response.choices[0].message.content.strip()
+
+        return explanation_text
 
     except Exception as e:
         return f"Conversational AI explanation failed: {str(e)}"

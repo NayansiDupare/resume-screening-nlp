@@ -1,15 +1,13 @@
 import { useParams } from "react-router-dom";
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
-import { useNavigate } from "react-router-dom";
 
 import { getJobById } from "../api/jobApi";
-import { uploadResumes, deleteResume } from "../api/resumeApi";
+import { uploadResumes, deleteResume, explainResume } from "../api/resumeApi";
 import { generateRanking, getRanking } from "../api/rankingApi";
 
 export default function JobDetails() {
   const { jobId } = useParams();
-  const navigate = useNavigate();
 
   const [job, setJob] = useState(null);
   const [files, setFiles] = useState([]);
@@ -51,12 +49,12 @@ export default function JobDetails() {
       formData.append("files", file);
     }
 
-
     setLoading(true);
     try {
       await uploadResumes(jobId, formData);
       toast.success("Resumes uploaded successfully");
       setFiles([]);
+      fetchRanking();
     } catch {
       toast.error("Upload failed");
     } finally {
@@ -65,14 +63,14 @@ export default function JobDetails() {
   };
 
   const handleDelete = async (resumeId) => {
-  try {
-    await deleteResume(resumeId);
-    toast.success("Resume deleted successfully");
-    fetchRanking();
-  } catch {
-    toast.error("Failed to delete resume");
-  }
-};
+    try {
+      await deleteResume(resumeId);
+      toast.success("Resume deleted successfully");
+      fetchRanking();
+    } catch {
+      toast.error("Failed to delete resume");
+    }
+  };
 
   const handleGenerateRanking = async () => {
     setRankingLoading(true);
@@ -87,7 +85,27 @@ export default function JobDetails() {
     }
   };
 
+  const handleExplain = async (resumeId) => {
+    try {
+      const res = await explainResume(resumeId);
+
+      setSelectedCandidate({
+        score: res.data.jd_coverage,
+        decision: res.data.decision,
+        matched_keywords: res.data.matched_keywords,
+        missing_keywords: res.data.missing_keywords,
+        aiExplanation: res.data.conversational_explanation
+      });
+
+    } catch {
+      toast.error("Failed to generate AI explanation");
+    }
+  };
+
   if (!job) return <div className="p-8">Loading...</div>;
+
+  // Find top candidate score
+  const topScore = Math.max(...ranking.map((c) => c.score || 0));
 
   return (
     <div className="min-h-screen bg-slate-100 p-8">
@@ -145,20 +163,46 @@ export default function JobDetails() {
                   <th className="p-4 text-left">Candidate</th>
                   <th className="p-4 text-left">Score</th>
                   <th className="p-4 text-left">Status</th>
-                  <th className="p-4 text-left">View</th>
+                  <th className="p-4 text-left">Explain</th>
                   <th className="p-4 text-left">Delete</th>
                 </tr>
               </thead>
+
               <tbody>
                 {ranking.map((candidate) => (
-                  <tr key={candidate._id} className="border-b">
+                  <tr
+                    key={candidate._id}
+                    className={`border-b ${
+                      candidate.score === topScore
+                        ? "bg-green-50 border-green-300"
+                        : ""
+                    }`}
+                  >
+
                     <td className="p-4">
                       {candidate.resumeId?.originalName || "Unknown"}
+
+                      {candidate.score === topScore && (
+                        <span className="ml-2 text-xs bg-green-500 text-white px-2 py-1 rounded">
+                          Top Candidate
+                        </span>
+                      )}
                     </td>
 
-                    {/* Only Score Number (No Progress Bar) */}
-                    <td className="p-4 font-semibold">
-                      {Math.min(candidate.score, 100)}%
+                    {/* Score with progress bar */}
+                    <td className="p-4">
+                      <div className="w-full bg-slate-200 rounded-full h-3">
+                        <div
+                          className="bg-indigo-600 h-3 rounded-full"
+                          style={{
+                            width: `${Math.min(candidate.score, 100)}%`
+                          }}
+                        ></div>
+                      </div>
+
+                      <p className="text-sm mt-1 font-semibold">
+                        {Math.min(candidate.score, 100)}%
+                      </p>
                     </td>
 
                     <td className="p-4 capitalize">
@@ -167,15 +211,11 @@ export default function JobDetails() {
 
                     <td className="p-4">
                       <button
-                    onClick={() =>
-                      navigate(`/explain/${jobId}/${candidate._id}`, {
-                        state: { candidate }
-                      })
-                    }
-                    className="text-indigo-600 hover:underline"
-                  >
-                    Explainable AI
-                  </button>
+                        onClick={() => handleExplain(candidate.resumeId?._id)}
+                        className="text-indigo-600 hover:underline"
+                      >
+                        Explain AI
+                      </button>
                     </td>
 
                     <td className="p-4">
@@ -186,53 +226,51 @@ export default function JobDetails() {
                         Delete
                       </button>
                     </td>
+
                   </tr>
                 ))}
               </tbody>
             </table>
 
-            {/* Detailed View Section */}
+            {/* AI Explanation Panel */}
             {selectedCandidate && (
               <div className="mt-8 p-6 bg-slate-50 rounded-lg">
+
                 <h4 className="text-lg font-bold mb-4">
-                  Score Explanation
+                  AI Resume Analysis
                 </h4>
 
                 <p className="mb-2">
-                  <strong>Final Score:</strong>{" "}
-                  {Math.min(selectedCandidate.score, 100)}%
+                  <strong>Candidate Score:</strong> {selectedCandidate.score}%
                 </p>
 
-                <p className="mb-2">
-                  <strong>Decision:</strong>{" "}
-                  {selectedCandidate.decision}
+                <p className="mb-4">
+                  <strong>ATS Decision:</strong> {selectedCandidate.decision}
                 </p>
 
-                <p className="mb-2">
-                  <strong>Reason:</strong>{" "}
-                  {selectedCandidate.explanation?.reason}
-                </p>
-
-                <div className="mb-2">
-                  <strong>Matched Keywords:</strong>
+                <div className="mb-4">
+                  <strong>Matched Skills:</strong>
                   <ul className="list-disc ml-6">
-                    {selectedCandidate.explanation?.matched_keywords?.map(
-                      (kw, index) => (
-                        <li key={index}>{kw}</li>
-                      )
-                    )}
+                    {selectedCandidate.matched_keywords?.map((kw, i) => (
+                      <li key={i}>{kw}</li>
+                    ))}
                   </ul>
                 </div>
 
-                <div className="mb-2">
-                  <strong>Missing Keywords:</strong>
+                <div className="mb-4">
+                  <strong>Missing Skills:</strong>
                   <ul className="list-disc ml-6">
-                    {selectedCandidate.explanation?.missing_keywords?.map(
-                      (kw, index) => (
-                        <li key={index}>{kw}</li>
-                      )
-                    )}
+                    {selectedCandidate.missing_keywords?.map((kw, i) => (
+                      <li key={i}>{kw}</li>
+                    ))}
                   </ul>
+                </div>
+
+                <div className="mb-4">
+                  <strong>AI Explanation:</strong>
+                  <p className="mt-2 text-slate-700">
+                    {selectedCandidate.aiExplanation}
+                  </p>
                 </div>
 
                 <button
@@ -241,6 +279,7 @@ export default function JobDetails() {
                 >
                   Close
                 </button>
+
               </div>
             )}
           </>

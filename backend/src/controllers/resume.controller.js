@@ -1,5 +1,6 @@
 const fs = require("fs");
 const pdfParse = require("pdf-parse");
+const axios = require("axios");
 
 const Job = require("../models/job.model");
 const Resume = require("../models/resume.model");
@@ -39,10 +40,11 @@ const uploadResumes = async (req, res) => {
     }
 
     return res.status(201).json({
-      message: "Resumes uploaded successfully ✅",
+      message: "Resumes uploaded successfully",
       count: savedResumes.length,
       resumes: savedResumes,
     });
+
   } catch (error) {
     return res.status(500).json({
       message: "Resume upload failed",
@@ -65,6 +67,7 @@ const getResumesByJobId = async (req, res) => {
       count: resumes.length,
       resumes,
     });
+
   } catch (error) {
     return res.status(500).json({
       message: "Get resumes failed",
@@ -74,7 +77,7 @@ const getResumesByJobId = async (req, res) => {
 };
 
 /**
- * Explain a single resume (FINAL, ALIGNED VERSION)
+ * Explain a single resume (FULL AI PIPELINE)
  */
 const explainResume = async (req, res) => {
   try {
@@ -90,18 +93,44 @@ const explainResume = async (req, res) => {
       return res.status(404).json({ message: "Job not found" });
     }
 
-    // 🔥 SINGLE SOURCE OF TRUTH
+    // STEP 1: Call ML explain API
     const explanation = await getExplanation(
-      job.description, // Job Description
-      resume.text      // Resume Text
+      job.description,
+      resume.text
     );
+
+    // STEP 2: Call conversational AI API
+    const aiResponse = await axios.post(
+      "http://localhost:5001/ml/conversational-explain",
+      {
+        explanation
+      }
+    );
+
+    const conversationalExplanation =
+      aiResponse.data.conversational_explanation;
+
+    // STEP 3: Save AI results in database
+    resume.score = explanation.jd_coverage;
+    resume.matched_keywords = explanation.matched_keywords;
+    resume.missing_keywords = explanation.missing_keywords;
+    resume.decision = explanation.decision;
+    resume.conversational_explanation = conversationalExplanation;
+
+    await resume.save();
 
     return res.json({
       resumeId,
       jobId: job._id,
       jobTitle: job.title,
+
+      // AI structured result
       ...explanation,
+
+      // AI conversational explanation
+      conversational_explanation: conversationalExplanation,
     });
+
   } catch (error) {
     return res.status(500).json({
       message: "Resume explanation failed",

@@ -33,18 +33,32 @@ export default function ExplainableAI() {
         <h3 className="text-xl font-semibold mb-2">
           Final Score: {Math.min(candidate.score, 100)}%
         </h3>
+
         <p className="text-gray-600">
           Confidence Level: {(candidate.score / 100).toFixed(2)}
         </p>
+
         <p className="mt-2 font-medium">
           Decision: {candidate.decision}
         </p>
+
         <p className="mt-2 text-gray-700">
           {candidate.explanation?.reason}
         </p>
       </div>
 
-      {/* Where Marks Added / Deducted */}
+      {/* Conversational AI Explanation */}
+      <div className="bg-white p-6 rounded-xl shadow mb-6">
+        <h3 className="text-lg font-semibold mb-4">
+          AI Recruiter Explanation
+        </h3>
+
+        <p className="text-gray-700 leading-relaxed">
+          {candidate.conversational_explanation || "No AI explanation available."}
+        </p>
+      </div>
+
+      {/* Score Breakdown */}
       <div className="bg-white p-6 rounded-xl shadow mb-6">
         <h3 className="text-lg font-semibold mb-4">
           Score Contribution Breakdown
@@ -61,6 +75,7 @@ export default function ExplainableAI() {
                 <span className="capitalize">
                   {key.replace(/_/g, " ")}
                 </span>
+
                 <span
                   className={isPositive ? "text-green-600" : "text-red-600"}
                 >
@@ -81,6 +96,7 @@ export default function ExplainableAI() {
         <p className="text-green-600 font-medium mb-2">
           Matched Keywords:
         </p>
+
         <ul className="list-disc ml-6 mb-4">
           {candidate.explanation?.matched_keywords?.map((kw, index) => (
             <li key={index}>{kw}</li>
@@ -90,6 +106,7 @@ export default function ExplainableAI() {
         <p className="text-red-600 font-medium mb-2">
           Missing Keywords:
         </p>
+
         <ul className="list-disc ml-6">
           {candidate.explanation?.missing_keywords?.map((kw, index) => (
             <li key={index}>{kw}</li>
@@ -97,7 +114,7 @@ export default function ExplainableAI() {
         </ul>
       </div>
 
-      {/* Resume Weakness Section */}
+      {/* Resume Quality */}
       <div className="bg-white p-6 rounded-xl shadow mb-6">
         <h3 className="text-lg font-semibold mb-4">
           Resume Quality Issues
@@ -129,6 +146,7 @@ export default function ExplainableAI() {
       >
         Back
       </button>
+
     </div>
   );
 }
